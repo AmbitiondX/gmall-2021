@@ -22,7 +22,7 @@ object DauApp {
     val sparkConf: SparkConf = new SparkConf().setAppName("DauApp").setMaster("local[*]")
 
     //2.创建StreamingContext
-    val ssc: StreamingContext = new StreamingContext(sparkConf, Seconds(3))
+    val ssc: StreamingContext = new StreamingContext(sparkConf, Seconds(10))
 
     //3.消费kafka数据
     val kafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_STARTUP, ssc)
@@ -46,15 +46,29 @@ object DauApp {
 
     //4.分区间过滤
     val filterByRedisDStream: DStream[StartUpLog] = DauHandler.filterByRedis(startUpLogDStream)
+//    val filterByRedisDStream: DStream[StartUpLog] = DauHandler.filterByRedis(startUpLogDStream,ssc.sparkContext)
 
     // 验证是否过滤掉数据
     startUpLogDStream.count().print()
     filterByRedisDStream.count().print()
 
     //5.分区内过滤
+    val filterByGroupDStream: DStream[StartUpLog] = DauHandler.filterByGroup(filterByRedisDStream)
+
+    filterByGroupDStream.count().print()
 
     //6.将mid保存到redis
-    DauHandler.saveToRedis(filterByRedisDStream)
+    DauHandler.saveToRedis(filterByGroupDStream)
+
+    //7.将数据保存到hbase
+    filterByGroupDStream.foreachRDD(rdd => {
+      rdd.saveToPhoenix(
+        "GMALL2021_DAU",
+        Seq("MID", "UID", "APPID", "AREA", "OS", "CH", "TYPE", "VS", "LOGDATE", "LOGHOUR", "TS"),
+        HBaseConfiguration.create(),
+        Some("hadoop102,hadoop103,hadoop104:2181")
+      )
+    })
 
     // 打印kafka数据
 //    kafkaDStream.foreachRDD(rdd => {
