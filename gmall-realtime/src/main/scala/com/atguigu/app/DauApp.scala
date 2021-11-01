@@ -27,12 +27,41 @@ object DauApp {
     //3.消费kafka数据
     val kafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_STARTUP, ssc)
 
-    //4.打印kafka数据
-    kafkaDStream.foreachRDD(rdd => {
-      rdd.foreach(record => {
-        println(record.value())
+
+    //4.将数据转换成样例类
+    val sdf: SimpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH")
+    val startUpLogDStream: DStream[StartUpLog] = kafkaDStream.mapPartitions(part => {
+      part.map(record => {
+        val str: String = record.value()
+        val log: StartUpLog = JSON.parseObject(str, classOf[StartUpLog])
+        val date: String = sdf.format(log.ts)
+        log.logDate = date.split(" ")(0)
+        log.logHour = date.split(" ")(1)
+        log
       })
     })
+
+    // 添加缓存
+    startUpLogDStream.cache()
+
+    //4.分区间过滤
+    val filterByRedisDStream: DStream[StartUpLog] = DauHandler.filterByRedis(startUpLogDStream)
+
+    // 验证是否过滤掉数据
+    startUpLogDStream.count().print()
+    filterByRedisDStream.count().print()
+
+    //5.分区内过滤
+
+    //6.将mid保存到redis
+    DauHandler.saveToRedis(filterByRedisDStream)
+
+    // 打印kafka数据
+//    kafkaDStream.foreachRDD(rdd => {
+//      rdd.foreach(record => {
+//        println(record.value())
+//      })
+//    })
 
     //开启任务并阻塞
     ssc.start()

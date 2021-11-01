@@ -1,6 +1,6 @@
 package com.atguigu.utils
 
-import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.SparkContext
 import org.apache.spark.streaming.StreamingContext
@@ -21,8 +21,21 @@ object MyKafkaUtil {
 
   //3.kafka消费者配置
 
-  def getKafkaStream(topic: String, ssc: SparkContext) ={
-    KafkaUtils.createDirectStream[String,String]()
+  var kafkaParam = mutable.Map(
+    ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> broker_list,
+    ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "latest",
+    ConsumerConfig.GROUP_ID_CONFIG -> "bigdata2021",
+    ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG -> classOf[StringDeserializer],
+    ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG -> classOf[StringDeserializer],
+    ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> "true"
+  )
+
+  def getKafkaStream(topic: String, ssc: StreamingContext) ={
+    KafkaUtils.createDirectStream[String,String](
+      ssc,
+      LocationStrategies.PreferConsistent,
+      ConsumerStrategies.Subscribe[String,String](Array(topic),kafkaParam)
+    )
   }
 
 
