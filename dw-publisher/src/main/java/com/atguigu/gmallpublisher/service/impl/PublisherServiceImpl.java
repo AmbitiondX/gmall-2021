@@ -1,6 +1,7 @@
 package com.atguigu.gmallpublisher.service.impl;
 
 import com.atguigu.gmallpublisher.mapper.DauMapper;
+import com.atguigu.gmallpublisher.mapper.OrderMapper;
 import com.atguigu.gmallpublisher.service.PublisherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,5 +34,26 @@ public class PublisherServiceImpl implements PublisherService {
 //        System.out.println(result);
 
         return result;
+    }
+
+    @Autowired
+    private OrderMapper orderMapper;
+    @Override
+    public Double getOrderAmountTotal(String date) {
+        return orderMapper.selectOrderAmountTotal(date);
+    }
+
+    @Override
+    public Map<String, Double> getOrderAmountHourMap(String date) {
+        // 获取dao层查询的数据
+        List<Map> list = orderMapper.selectOrderAmountHourMap(date);
+        // 创建一个map封装list
+        HashMap<String, Double> hourMap = new HashMap<>();
+
+        for (Map map : list) {
+            hourMap.put((String) map.get("CREATE_HOUR"),(Double) map.get("SUM_AMOUNT"));
+        }
+
+        return hourMap;
     }
 }

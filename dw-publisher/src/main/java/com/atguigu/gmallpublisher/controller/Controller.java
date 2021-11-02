@@ -39,24 +39,43 @@ public class Controller {
         devMap.put("name","新增设备");
         devMap.put("value","233");
 
+        // 创建存放交易额总数的map集合
+        HashMap<String, Object> gmvMap = new HashMap<>();
+        Double orderAmountTotal = publisherService.getOrderAmountTotal(date);
+
+        gmvMap.put("id", "order_amount");
+        gmvMap.put("name", "新增交易额");
+        gmvMap.put("value", orderAmountTotal);
+
         // 创建一个存放map的list
         ArrayList<HashMap> result = new ArrayList<>();
 
         result.add(dauMap);
         result.add(devMap);
+        result.add(gmvMap);
 
         // 使用fastjson.JSON将list集合处理为字符串
         return JSONObject.toJSONString(result);
     }
 
     @RequestMapping("realtime-hours")
-    public String realtimeHours(@RequestParam("date") String date){
-        //1.获取Service层处理过后的数据
-        Map todayMap = publisherService.getDauTotalHourMap(date);
-
+    public String realtimeHours(@RequestParam("id") String id,
+                                @RequestParam("date") String date){
         // 获取昨天的日期
         String yesterday = LocalDate.parse(date).plusDays(-1).toString();
-        Map yesterdayMap = publisherService.getDauTotalHourMap(yesterday);
+
+        Map todayMap = null;
+        Map yesterdayMap = null;
+
+        //1.获取Service层处理过后的数据
+        if ("dau".equals(id)){
+            todayMap = publisherService.getDauTotalHourMap(date);
+            yesterdayMap = publisherService.getDauTotalHourMap(yesterday);
+        } else if ("order_amount".equals(id)){
+            todayMap = publisherService.getOrderAmountHourMap(date);
+            yesterdayMap = publisherService.getOrderAmountHourMap(yesterday);
+        }
+
 
         //2.创建存放结果数据的Map集合
         HashMap<String, Map> result = new HashMap<>();
