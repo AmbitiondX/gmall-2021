@@ -6,10 +6,11 @@ import com.atguigu.constants.GmallConstants
 import com.atguigu.utils.MyKafkaUtil
 import org.apache.hadoop.hbase.HBaseConfiguration
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
+import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.phoenix.spark._
+
 
 object GmvApp {
   def main(args: Array[String]): Unit = {
@@ -17,22 +18,22 @@ object GmvApp {
     val conf: SparkConf = new SparkConf().setAppName("GmvApp").setMaster("local[*]")
 
     // 创建StreamingContext
-    val ssc: StreamingContext = new StreamingContext(conf,Seconds(3))
+    val ssc: StreamingContext = new StreamingContext(conf, Seconds(3))
 
-    // 获取Kafka的数据
-    val KafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_ORDER, ssc)
+    // 获取Kafka数据流
+    val kafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_ORDER, ssc)
 
-    // 将JSON数据转为样例类，并补全字段
-    val orderInfoDStream: DStream[OrderInfo] = KafkaDStream.mapPartitions(rdd => {
-      rdd.map(record => {
-        val orderInfo: OrderInfo = JSON.parseObject(record.value(), classOf[OrderInfo])
-        orderInfo.create_date = orderInfo.create_time.split(" ")(0)
-        orderInfo.create_hour = orderInfo.create_time.split(" ")(1).split(":")(0)
-        orderInfo
+    // 封装成样例类，并补全字段
+    val orderInfoDStream: DStream[OrderInfo] = kafkaDStream.mapPartitions(part => {
+      part.map(record => {
+        val info: OrderInfo = JSON.parseObject(record.value(), classOf[OrderInfo])
+        info.create_date = info.create_time.split(" ")(0)
+        info.create_hour = info.create_time.split(" ")(1).split(":")(0)
+        info
       })
     })
 
-    // 直接把数据写到Phoenix
+    // 数据写入hbase
     orderInfoDStream.foreachRDD(rdd => {
       rdd.saveToPhoenix(
         "GMALL2021_ORDER_INFO",
@@ -42,7 +43,7 @@ object GmvApp {
       )
     })
 
-    // 启动任务并阻塞
+    // 启动ssc，并阻塞线程
     ssc.start()
     ssc.awaitTermination()
   }
