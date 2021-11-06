@@ -22,6 +22,7 @@ object AlertApp {
     //2.创建StreamingContext
     val ssc: StreamingContext = new StreamingContext(sparkConf,Seconds(5))
 
+
     //3.消费kafka数据
     val kafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_EVENT,ssc)
 
@@ -38,59 +39,51 @@ object AlertApp {
       })
     })
 
+//    midToLogDStream.print()
+
     //5.开窗5min
     val windowDStream: DStream[(String, EventLog)] = midToLogDStream.window(Minutes(5))
 
     //6.分组聚合按照mid
     val midToLogIterDStream: DStream[(String, Iterable[EventLog])] = windowDStream.groupByKey()
 
-    //7.筛选数据，首先用户得领优惠券，并且用户没有浏览商品行为（将符合这些行为的uid保存下来至set集合）
-    val boolDStream: DStream[(Boolean, CouponAlertInfo)] = midToLogIterDStream.mapPartitions(part => {
-      part.map {
+    val boolToCouponAlertDStream: DStream[(Boolean, CouponAlertInfo)] = midToLogIterDStream.mapPartitions(iter => {
+      iter.map {
         case (mid, iter) => {
-          println("11111111111111111111111111")
-          // 创建set集合用来保存uid
           val uids: util.HashSet[String] = new util.HashSet[String]()
-          // 创建set集合用来保存优惠券所涉及商品id
           val itemIds: util.HashSet[String] = new util.HashSet[String]()
-          // 创建List集合用来保存用户行为事件
           val events: util.ArrayList[String] = new util.ArrayList[String]()
-
-          //标志位
           var bool = true
-
-          //判断有没有浏览商品行为
-          breakable {
-            iter.foreach(log => {
-              events.add(log.evid)
-
-              if (log.evid.equals("clickItem")) { //判断用户是否有浏览商品行为
+          iter.foreach(log => {
+            events.add(log.evid)
+            breakable {
+              if ("clickItem".equals(log.evid)) {
                 bool = false
                 break()
-              } else if (log.evid.equals("coupon")) { //判断用户是否有领取购物券行为
-                itemIds.add(log.itemid)
+              } else if ("coupon".equals(log.evid)) {
                 uids.add(log.uid)
+                itemIds.add(log.itemid)
               }
-            })
-          }
-          //产生疑似预警日志
-          println("222222222222222222222222222222222222222")
+            }
+          })
           ((uids.size() >= 3 && bool), CouponAlertInfo(mid, uids, itemIds, events, System.currentTimeMillis()))
         }
       }
     })
 
-    // 8.生成预警日志(将数据保存至CouponAlertInfo样例类中，文档中有)，条件：符合第七步要求，并且uid个数>=3（主要为“过滤”出这些数据），实质：补全CouponAlertInfo样例类
-    val alterDStream: DStream[CouponAlertInfo] = boolDStream.filter(_._1).map(_._2)
+    //8.生成预警日志
+    val couponAlertInfoDStream: DStream[CouponAlertInfo] = boolToCouponAlertDStream.filter(_._1).map(_._2)
 
-    // 9.将预警数据写入ES
-    alterDStream.foreachRDD(rdd => {
-      rdd.foreachPartition(iter => {
-        println("3333333333333333333333333333333333")
-        val indexName: String = GmallConstants.ES_ALERT_INDEXNAME + "-" + sdf.format(new Date(System.currentTimeMillis())).split(" ")(0)
-        val list: List[(String, CouponAlertInfo)] = iter.toList.map(alert => {
-          (alert.mid + alert.ts / 1000 / 60, alert)
+    couponAlertInfoDStream.print()
+    //9.将预警日志写入ES并去重
+    couponAlertInfoDStream.foreachRDD(part => {
+      part.foreachPartition(part => {
+        val list: List[(String, CouponAlertInfo)] = part.toList.map(log => {
+          //设备id + 时间(精确到'分') 作为插入es的id，利用幂等性去重
+          (log.mid + log.ts / 1000 / 60, log)
         })
+        val times: String = sdf.format(new Date(System.currentTimeMillis())).split(" ")(0)
+        val indexName: String = GmallConstants.ES_ALERT_INDEXNAME + "-" + times
         MyEsUtil.insertBulk(indexName,list)
       })
     })

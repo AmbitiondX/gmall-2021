@@ -48,15 +48,21 @@ public class CanalClient {
                     // 将order_info表中新增的数据进一步处理
                     CanalEntry.EventType eventType = rowChange.getEventType();
                     if ("order_info".equals(tableName) && CanalEntry.EventType.INSERT.equals(eventType)) {
-                        handler(rowChange);
+                        handler(rowChange,GmallConstants.KAFKA_TOPIC_ORDER);
+                    }else if ("order_detail".equals(tableName)&&CanalEntry.EventType.INSERT.equals(eventType)){
+                        handler(rowChange,GmallConstants.KAFKA_TOPIC_ORDER_DETAIL);
+                    }else if ("user_info".equals(tableName)&&(CanalEntry.EventType.INSERT.equals(eventType)||CanalEntry.EventType.UPDATE.equals(eventType))){
+                        handler(rowChange, GmallConstants.KAFKA_TOPIC_USER);
                     }
+
+
                 }
 
             }
         }
     }
 
-    private static void handler(CanalEntry.RowChange rowChange) {
+    private static void handler(CanalEntry.RowChange rowChange, String kafkaTopic ) {
         List<CanalEntry.RowData> rowDatasList = rowChange.getRowDatasList();
         for (CanalEntry.RowData rowData : rowDatasList) {
             JSONObject jsonObject = new JSONObject();
@@ -65,8 +71,7 @@ public class CanalClient {
             for (CanalEntry.Column column : afterColumnsList) {
                 jsonObject.put(column.getName(),column.getValue());
             }
-            MyKafkaSender.send(GmallConstants.KAFKA_TOPIC_ORDER,jsonObject.toString());
-
+            MyKafkaSender.send(kafkaTopic,jsonObject.toString());
         }
     }
 }
