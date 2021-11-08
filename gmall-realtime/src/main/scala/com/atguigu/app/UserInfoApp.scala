@@ -9,6 +9,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark.streaming.dstream.{DStream, InputDStream}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import redis.clients.jedis.Jedis
+import org.json4s.native.Serialization
 
 object UserInfoApp {
   def main(args: Array[String]): Unit = {
@@ -21,27 +22,23 @@ object UserInfoApp {
     //3.分别消费kafka中订单表的数据以及订单明细表的数据
     val kafkaDStream: InputDStream[ConsumerRecord[String, String]] = MyKafkaUtil.getKafkaStream(GmallConstants.KAFKA_TOPIC_USER, ssc)
 
-    //4.将用户表的数据转化为样例类
-    val userInfoDStream: DStream[UserInfo] = kafkaDStream.mapPartitions(partition => {
-      partition.map(record => {
-        JSON.parseObject(record.value(), classOf[UserInfo])
-      })
-    })
 
-    // 测试
-//    userInfoDStream.print()
 
     // 将用户数据缓存到redis
     // 生产环境中，用户数据比较大，一般都存储在hbase中
-    userInfoDStream.foreachRDD(rdd => {
+    kafkaDStream.foreachRDD(rdd => {
       rdd.foreachPartition(partition => {
         // 获取redis连接
         val jedis: Jedis = new Jedis("hadoop102")
-        partition.foreach(userInfo => {
+        partition.foreach(record => {
+          // 转化为样例类，获取userid
+          val userId: String = JSON.parseObject(record.value(), classOf[UserInfo]).id
           // 设计rediskey
-          val userInfoKey: String = "userInfoKey:" + userInfo.id
-          jedis.set(userInfoKey,)
+          val userInfoKey: String = "userInfo:" + userId
+          jedis.set(userInfoKey,record.value())
         })
+        // 关闭jedis连接
+        jedis.close()
       })
     })
 

@@ -3,10 +3,13 @@ package com.atguigu.utils
 import java.io.InputStreamReader
 import java.util.Properties
 
+
 object PropertiesUtil {
-  def load(propertieName: String): Properties ={
+  def load(propertyName: String) ={
     val prop: Properties = new Properties()
-    prop.load(new InputStreamReader(Thread.currentThread().getContextClassLoader.getResourceAsStream(propertieName),"UTF-8"))
+    prop.load(new InputStreamReader(Thread.currentThread().getContextClassLoader.getResourceAsStream(propertyName),"UTF-8"))
     prop
   }
+
+
 }
